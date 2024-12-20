@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Mapa Interactivo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+    #map {
+      width: 100%;
+      height: 500px;
+    }
+    #input-section {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #ccc;
+    }
+    .input-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .input-row label {
+      width: 150px;
+      font-size: 14px;
+    }
+    .input-row input {
+      flex: 1;
+      padding: 5px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="input-section">
+    <div class="input-row">
+      <label for="clipboard-input">Pegar Texto:</label>
+      <input type="text" id="clipboard-input" placeholder="Pega aquí desde el portapapeles" />
+    </div>
+    <div class="input-row">
+      <label for="coordinates">Coordenadas:</label>
+      <input type="text" id="coordinates" placeholder="Coordenadas del último dibujo" readonly />
+    </div>
+    <div class="input-row">
+      <label for="row-number">Número de Fila:</label>
+      <input type="number" id="row-number" placeholder="Especifica la fila" />
+    </div>
+    <div class="input-row">
+      <button id="save-coordinates">Guardar en la Hoja</button>
+    </div>
+  </div>
+
+  <script>
+    // Inicializar el mapa
+    var map = L.map('map').setView([-12.0464, -77.0428], 12); // Coordenadas iniciales (Lima, Perú)
+
+    // Capa base del mapa
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+    }).addTo(map);
+
+    // Contenedor para los elementos dibujados
+    var drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    // Controlador de dibujo
+    var drawControl = new L.Control.Draw({
+      edit: {
+        featureGroup: drawnItems,
+        remove: true, // Permite eliminar elementos existentes
+      },
+      draw: {
+        polyline: true,  // Habilitar líneas
+        polygon: true,   // Habilitar polígonos
+        rectangle: true, // Habilitar rectángulos
+        circle: false,   // Deshabilitar círculos
+        marker: true,    // Habilitar marcadores
+      },
+    });
+    map.addControl(drawControl);
+
+    // Evento para agregar elementos dibujados al grupo y mostrar las coordenadas
+    map.on('draw:created', function (e) {
+      var layer = e.layer; // Capa creada
+      drawnItems.addLayer(layer); // Agregar al grupo para que persista
+
+      // Obtener las coordenadas del último dibujo en el formato personalizado
+      var coordinates;
+      if (layer instanceof L.Marker) {
+        var latLng = layer.getLatLng();
+        coordinates = `${latLng.lat},${latLng.lng}`;
+      } else {
+        var latLngs = layer.getLatLngs().flat();
+        coordinates = latLngs.map(latLng => `${latLng.lat},${latLng.lng}`).join(' ');
+      }
+
+      // Mostrar las coordenadas en el campo de texto
+      document.getElementById('coordinates').value = coordinates;
+    });
+
+    // Agregar buscador de direcciones
+    var geocoder = L.Control.geocoder({
+      defaultMarkGeocode: false,
+    })
+    .on('markgeocode', function (e) {
+      var latlng = e.geocode.center;
+      var marker = L.marker(latlng).addTo(map);
+      map.setView(latlng, 16); // Centrar el mapa
+    })
+    .addTo(map);
+
+    // Copiar desde el portapapeles (opcional, requiere permisos)
+    document.getElementById('clipboard-input').addEventListener('click', async function () {
+      try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById('clipboard-input').value = text;
+      } catch (err) {
+        console.error('Error al leer el portapapeles:', err);
+      }
+    });
+
+      document.getElementById('save-coordinates').addEventListener('click', function () {
+      const coordinates = document.getElementById('coordinates').value;
+      const rowNumber = parseInt(document.getElementById('row-number').value, 10);
+
+      if (!coordinates || isNaN(rowNumber) || rowNumber <= 0) {
+        alert('Por favor, ingresa coordenadas válidas y un número de fila válido.');
+        return;
+      }
+
+      // Llama a Apps Script para guardar las coordenadas
+      google.script.run.withSuccessHandler(() => {
+        alert('Coordenadas guardadas correctamente.');
+      }).withFailureHandler(err => {
+        console.error('Error desde Apps Script:', err);
+        alert(`Error al guardar las coordenadas: ${err.message || err}`);
+      }).saveCoordinatesToRow(coordinates, rowNumber);
+    });
+  </script>
+</body>
+</html>
